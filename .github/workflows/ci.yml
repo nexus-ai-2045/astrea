@@ -1,0 +1,38 @@
+name: CI
+
+# トリガーは push (全ブランチ) と pull_request のみに絞る。
+# issue_comment や pull_request_target、privileged な workflow_dispatch を足すと、
+# public repo では外部の第三者が secrets 付きの権限で workflow を発火できてしまう。
+on:
+  push:
+  pull_request:
+
+# 最小権限の原則。このワークフローは checkout してビルド/テストするだけで、
+# リポジトリへの書き込みや PR コメント投稿等は行わないため read-only で十分。
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # package.json の engines.node (>=20.9.0) に合わせる
+          node-version: "20"
+          cache: "npm"
+
+      # better-sqlite3 はネイティブ拡張だが、install script (prebuild-install ||
+      # node-gyp rebuild) が linux-x64/Node20 向けの prebuilt binary を取得できるため、
+      # ubuntu-latest ランナーに標準搭載の build-essential / python3 以外の追加セットアップは不要
+      # (フォールバックのソースビルドが必要になった場合もそれらで足りる)。
+      - run: npm ci
+
+      # 型エラーはテスト/ビルドより先に落として、遅いステップに進む前に気付けるようにする
+      - run: npx tsc --noEmit
+
+      - run: npm test
+
+      - run: npm run build
